@@ -1,0 +1,64 @@
+#############################################################
+########### ETAPA 4 - CONFIGURACION POST REBOOT #############
+#############################################################
+
+# 09- Habilitar Red	
+	systemctl enable dhcpcd.service
+	systemctl start dhcpcd.service
+	systemctl enable NetworkManager.service
+	systemctl start NetworkManager.service
+	nmcli dev wifi connect SSID password xxx
+
+# 10- Agregar Usuario
+	useradd -m -g users -G wheel -s /bin/zsh arch
+	passwd arch
+	nano /etc/sudoers %wheel ALL=(ALL) NOPASSWD: ALL
+	su - arch
+	sudo pacman -Syyuu
+
+# 11- Repositorio YAY 
+	sudo pacman -Syu
+	sudo pacman -S git binutils make gcc pkg-config fakeroot
+	cd /opt
+	sudo git clone https://aur.archlinux.org/yay.git
+	sudo chown -R joak:wheel yay/
+	cd yay
+	makepkg -si
+	yay -Syu
+	
+# 12- Entorno grafico 
+	lspci | grep VGA
+	sudo pacman -S xf86-video-vesa		
+	sudo pacman -S xf86-video-intel
+
+	sudo pacman -S wayland
+	sudo pacman -S network-manager-applet
+
+# 13- Entornos de Escritorios
+	GNOME:
+	sudo pacman -S gnome 
+	
+	XFCE:
+	sudo pacman -S xfce4
+	
+# 13a- Windows Manager	
+	Hyprland
+	sudo pacman -S hyprland
+
+# 13b- Display Manager
+	Ly:
+	sudo pacman -S ly
+	systemctl enable ly.service
+
+	LightDM:
+	sudo pacman -S	lightdm 
+			lightdm-gtk-greeter-settings
+			lightdm-gtk-greeter / lightdm-slick-greeter
+
+	systemctl enable lightdm.service
+
+# 14- Apps varias
+sudo pacman -S wezterm  # Terminal
+sudo pacman -S lfm # File Manager
+sudo pacman -S zsh # shell
+sudo pacman -S bleachbit # Limpieza Sistema
