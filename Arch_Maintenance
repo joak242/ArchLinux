@@ -1,0 +1,27 @@
+**Eliminar paquetes
+sudo pacman -R "paquete"
+
+**Eliminar un paquete y sus dependencias
+sudo pacman -Rs "paquete"
+
+**Eliminar un paquete, sus dependencias y las dependencias de las dependencias
+sudo pacman -Rsc "paquete"
+
+**Eliminar un paquete y los archivos de configuración
+sudo pacman -Rn "paquete"
+
+
+**Consultar por un paquete en la base de datos de los repositorios
+pacman -Ss "paquete"
+
+**Consultar información detallada de un paquete en la base de datos de repositorios
+pacman -Si "paquete"
+
+**Listar todos los paquetes instalados en el sistema
+pacman -Q | less
+
+**Listar paquetes instalados en el sistema, sin dependencias
+pacman -Qe | less
+
+**Listar paquetes instalados en el sistema de fuentes no oficiales
+pacman -Qm
