@@ -92,7 +92,7 @@
 	efibootmgr -c -d /dev/sda -p 1 -L "ArchLinux" -l "/vmlinuz-linux" -u "rd.luks.name=UUID=CRY root=/dev/VG01/root rw quiet splash
 	initrd=\initramfs-linux.img"
 	
-08- Contrase a del Administrador y Saliendo de chroot
+08- Password del Administrador y Saliendo de chroot
 	passwd
  	exit
 	umount -R /mnt
