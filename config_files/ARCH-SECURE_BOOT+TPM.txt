@@ -1,0 +1,67 @@
+#Create Platform Key
+uuidgen --random > GUID.txt
+openssl req -newkey rsa:2048 -nodes -keyout PK.key -new -x509 -sha256 -days 3650 -subj "/CN=my Platform Key/" -out PK.crt
+openssl x509 -outform DER -in PK.crt -out PK.cer
+cert-to-efi-sig-list -g "$(< GUID.txt)" PK.crt PK.esl
+sign-efi-sig-list -g "$(< GUID.txt)" -k PK.key -c PK.crt PK PK.esl PK.auth
+
+#Create Key Exchange Key
+openssl req -newkey rsa:2048 -nodes -keyout KEK.key -new -x509 -sha256 -days 3650 -subj "/CN=my Key Exchange Key/" -out KEK.crt
+openssl x509 -outform DER -in KEK.crt -out KEK.cer
+cert-to-efi-sig-list -g "$(< GUID.txt)" KEK.crt KEK.esl
+sign-efi-sig-list -g "$(< GUID.txt)" -k PK.key -c PK.crt KEK KEK.esl KEK.auth
+
+#Creating Signature Database Key
+openssl req -newkey rsa:2048 -nodes -keyout db.key -new -x509 -sha256 -days 3650 -subj "/CN=my Signature Database key/" -out db.crt
+openssl x509 -outform DER -in db.crt -out db.cer
+cert-to-efi-sig-list -g "$(< GUID.txt)" db.crt db.esl
+sign-efi-sig-list -g "$(< GUID.txt)" -k KEK.key -c KEK.crt db db.esl db.auth
+
+
+objcopy \
+	--add-section .osrel=/etc/os-release --change-section-vma .osrel=0x20000 \
+	--add-section .cmdline=cmdline.txt --change-section-vma .cmdline=0x30000 \
+	--add-section .linux="/boot/vmlinuz" --change-section-vma .linux=0x40000 \
+	--add-section .initrd="/boot/initrd.img" --change-section-vma .initrd=0x3000000 \
+	/usr/lib/systemd/boot/efi/linuxx64.efi.stub /boot/EFI/BOOT/BOOTX64.EFI
+sbsign --key ${SBKEYS}/db.key --cert ${SBKEYS}/db.crt --output /boot/EFI/BOOT/BOOTX64.EFI /boot/EFI/BOOT/BOOTX64.EFI
+
+
+
+
+cryptsetup luksFormat -v -s 512 -h sha512 /dev/sda2
+cryptsetup luksFormat -v -s 512 -h sha512 /dev/sda3
+cryptsetup luksFormat -v -s 512 -h sha512 /dev/sda4
+
+cryptsetup open /dev/sda2 luks_swap
+cryptsetup open /dev/sda3 luks_lvm1
+cryptsetup open /dev/sda4 luks_lvm2
+
+
+#Loading secret into TPM
+tpm2_pcrlist -L sha1:0,2,3,7 -o pcrs.bin # Save our list of PCRs
+tpm2_createpolicy -P -L sha1:0,2,3,7 -F pcrs.bin -f policy.digest # Create PCR Policy
+tpm2_createprimary -a e -g sha1 -G rsa -o primary.context # Create primary TPM object
+tpm2_create -g sha256 -G keyedhash -u obj.pub -r obj.priv -C primary.context -L policy.digest -A "noda|adminwithpolicy|fixedparent|fixedtpm" -I /tmp/secret.bin # Create TPM Object with Secret
+tpm2_load -C primary.context -u obj.pub -r obj.priv -o load.context  # Load object into the TPM
+tpm2_evictcontrol -c load.context # Make TPM Object Persistant
+
+/etc/initramfs-tools/hooks/tpm2:
+#!/bin/sh -e
+if [ "$1" = "prereqs" ]; then exit 0; fi
+. /usr/share/initramfs-tools/hook-functions
+copy_exec /usr/local/bin/tpm2_unseal
+copy_exec /usr/local/lib/libtss2-tcti-device.so
+
+cryptname UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx none luks,keyscript=/usr/local/bin/passphrase-from-tpm
+
+
+#!/bin/sh
+set -e
+echo "Unlocking via TPM" >&2
+export TPM2TOOLS_TCTI="device:/dev/tpm0"
+/usr/local/bin/tpm2_unseal -c 0x81000000 -L sha1:0,2,3,7
+if [ $? -eq 0 ]; then
+	exit
+fi
+/lib/cryptsetup/askpass "Unlocking the disk fallback $CRYPTTAB_SOURCE ($CRYPTTAB_NAME)\nEnter passphrase: "
