@@ -1,0 +1,99 @@
+#######################################################################
+###########   ETAPA 1: PREPARACION DEL SISTEMA  #######################
+#######################################################################
+
+# 01 - Configuracion teclado y fuentes temporal
+	loadkeys es
+	setfont Lat2-Terminus16
+
+# 02- Encriptado y Particionado de disco con montado de particiones
+
+		efivar -l			# Comprueba que se inicio con UEFI
+		lsblk					# Ver discos fisicos
+
+    cfdisk /dev/sda 	            		# Crear particion 50Mb EFI / Resto LVM
+		cryptsetup luksFormat /dev/sda2 	# Encripta unidad no booteable
+		cryptsetup open /dev/sda2 CRY	  	# Ingresa a unidad encriptada
+
+		pvcreate	/dev/mapper/CRY	  	# Crea Volumen Fisico
+		pvs / pvdisplay		        		# Info volumen fisico
+		vgcreate VGR /dev/mapper/CRY	# Crea Grupo de Volumenes
+		lvcreate -L 20G VGR -n root	# Crea Volumen Logico para root
+		lvcreate -L 20G VGR -n home	# Crea Volumen Logico para home
+		lvcreate -L 20G VGR -n var		# Crea Volumen Logico para var
+		lvcreate -L 20G VGR -n opt		# Crea Volumen Logico para opt
+		lvcreate -L 20G VGR -n usr		# Crea Volumen Logico para usr
+		lvcreate -L 20G VGR -n tmp		# Crea Volumen Logico para tmp
+		lvcreate -L 20G VGR -n swap	# Crea Volumen Logico para Swap
+		lvs / lvdisplay			        	# Info Volumen Logico
+		
+		mkfs.vfat -F32 /dev/sda1		# Formatea en FAT32 unidad sda1
+		mkfs.f2fs /dev/VGR/root		# Formatea en F2FS Volumen root
+		mkfs.f2fs /dev/VGR/home		# Formatea en F2FS Volumen home
+		mkfs.f2fs /dev/VGR/var			# Formatea en F2FS Volumen var
+		mkfs.f2fs /dev/VGR/opt			# Formatea en F2FS Volumen opt
+		mkfs.f2fs /dev/VGR/usr			# Formatea en F2FS Volumen usr
+		mkfs.tmps /dev/VGR/tmp			# Formatea en F2FS Volumen tmp
+		mkswap /dev/VGR/swap			# Crea unidad de SWAP
+		swapon /dev/VGR/swap			# Monta unidad de SWAP
+		mount /dev/VGR/root /mnt		# Monta unidad root
+		mount --mkdir /dev/sda1 /mnt/boot	# Monta unidad boot
+		mount --mkdir /dev/VGR/home /mnt/home	# Monta unidad home
+		mount --mkdir /dev/VGR/var /mnt/var	# Monta unidad var
+		mount --mkdir /dev/VGR/opt /mnt/opt	# Monta unidad opt
+		mount --mkdir /dev/VGR/usr /mnt/usr	# Monta unidad usr		
+		mount --mkdir /dev/VGR/tmp /mnt/tmp	# Monta unidad tmp
+
+###############################################################
+###########   Etapa 2: Instalacion base   #####################
+###############################################################
+			
+# 03- Conexion WIFI e Instalacion base
+	iwctl
+	station wlan0 connect SSID
+	station wlan0 show	
+	
+	pacstrap /mnt base base-devel linux linux-firmware efibootmgr networkmanager dhcpcd lvm2 f2fs-tools nano
+
+# 04- Generar fstab
+	genfstab -pU /mnt >> /mnt/etc/fstab
+
+# 05- Entrar al sistema base
+	arch-chroot /mnt
+
+###############################################################
+#########   Etapa 3: Configuracion basica   ###################
+###############################################################
+
+# 06- Configurar el sistema base
+	echo nombre > /etc/hostname
+	nano /etc/locale.gen
+	locale-gen
+	echo LANG=en_US.UTF-8 >> /etc/locale.conf
+	echo KEYMAP=es >> /etc/vconsole.conf
+	echo FONT=Lat2-Terminus16 >> /etc/vconsole.conf
+	ln -sf /usr/share/zoneinfo/Europe/Madrid /etc/localtime
+	hwclock --systohc --utc
+
+# 07- Mkinitcpio - Efibootmgr
+	nano	/etc/mkinitcpio.conf
+			HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt lvm2 filesystems fsck usr)
+
+  nano /etc/mkinitcpio.d/linux-preset
+			>Quitar imagen Fallback<
+
+	mkinitcpio -p linux
+		possibly mising firmware for module:
+		upd72020x-fw (xhci_pci)
+	mkinitcpio -p linux
+
+	blkid -s UUID -o value /dev/mapper/dev/sda2
+	
+	efibootmgr -c -d /dev/sda -p 1 -L "ArchLinux" -l "/vmlinuz-linux" -u "rd.luks.name=UUID=CRY root=/dev/VG01/root rw quiet splash
+	initrd=\initramfs-linux.img"
+	
+08- Contrase a del Administrador y Saliendo de chroot
+	passwd
+ 	exit
+	umount -R /mnt
+	reboot
